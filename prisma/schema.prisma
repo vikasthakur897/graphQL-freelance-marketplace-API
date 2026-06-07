@@ -1,13 +1,265 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum UserRole {
+  CLIENT
+  FREELANCER
+  ADMIN
+}
+
+enum ProjectStatus {
+  DRAFT
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+enum BudgetType {
+  FIXED
+  HOURLY
+}
+
+enum ProjectType {
+  ONE_TIME
+  ONGOING
+}
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum ContractStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  WALLET
+  ESCROW
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
+enum NotificationType {
+  PROPOSAL_SUBMITTED
+  PROPOSAL_ACCEPTED
+  PROPOSAL_REJECTED
+  CONTRACT_CREATED
+  PAYMENT_RECEIVED
+  PROJECT_COMPLETED
+  SYSTEM
+}
+
+model User {
+  id                     String              @id @default(uuid())
+  firstName              String
+  lastName               String
+  email                  String              @unique
+  password               String
+  role                   UserRole
+  phone                  String?
+  country                String?
+  profileImage           String?
+  bio                    String?
+  skills                 String[]            @default([])
+  emailVerified          Boolean             @default(false)
+  emailVerificationToken String?             @unique
+  resetPasswordToken     String?             @unique
+  resetPasswordExpiresAt DateTime?
+  refreshToken           String?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  freelancerProfile      FreelancerProfile?
+  clientProfile          ClientProfile?
+  projects               Project[]           @relation("ClientProjects")
+  proposals              Proposal[]          @relation("FreelancerProposals")
+  clientContracts        Contract[]          @relation("ClientContracts")
+  freelancerContracts    Contract[]          @relation("FreelancerContracts")
+  writtenReviews         Review[]            @relation("WrittenReviews")
+  receivedReviews        Review[]            @relation("ReceivedReviews")
+  notifications          Notification[]
+
+  @@index([role])
+  @@index([createdAt])
+}
+
+model FreelancerProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique
+  title              String?
+  overview           String?
+  experience         String?
+  education          String?
+  hourlyRate         Decimal?           @db.Decimal(10, 2)
+  availabilityStatus AvailabilityStatus @default(AVAILABLE)
+  averageRating      Decimal            @default(0) @db.Decimal(3, 2)
+  totalReviews       Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolioProjects  PortfolioProject[]
+
+  @@index([availabilityStatus])
+}
+
+model PortfolioProject {
+  id           String            @id @default(uuid())
+  freelancerId String
+  title        String
+  description  String?
+  projectUrl   String?
+  imageUrl     String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  freelancer   FreelancerProfile @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  @@index([freelancerId])
+}
+
+model ClientProfile {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  companyName        String?
+  website            String?
+  industry           String?
+  companyDescription String?
+  hiringHistory      Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Project {
+  id             String        @id @default(uuid())
+  title          String
+  description    String
+  budget         Decimal       @db.Decimal(10, 2)
+  budgetType     BudgetType
+  projectType    ProjectType
+  skillsRequired String[]      @default([])
+  deadline       DateTime?
+  status         ProjectStatus @default(DRAFT)
+  clientId       String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  client         User          @relation("ClientProjects", fields: [clientId], references: [id], onDelete: Cascade)
+  proposals      Proposal[]
+  contract       Contract?
+
+  @@index([clientId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Proposal {
+  id                String         @id @default(uuid())
+  projectId         String
+  freelancerId      String
+  coverLetter       String
+  proposedAmount    Decimal        @db.Decimal(10, 2)
+  estimatedDuration String
+  status            ProposalStatus @default(PENDING)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  project           Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  freelancer        User           @relation("FreelancerProposals", fields: [freelancerId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, freelancerId])
+  @@index([projectId, status])
+  @@index([freelancerId])
+}
+
+model Contract {
+  id           String         @id @default(uuid())
+  projectId    String         @unique
+  clientId     String
+  freelancerId String
+  agreedAmount Decimal        @db.Decimal(10, 2)
+  startDate    DateTime
+  endDate      DateTime?
+  status       ContractStatus @default(PENDING)
+  signedAt     DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  client       User           @relation("ClientContracts", fields: [clientId], references: [id], onDelete: Cascade)
+  freelancer   User           @relation("FreelancerContracts", fields: [freelancerId], references: [id], onDelete: Cascade)
+  payments     Payment[]
+
+  @@index([clientId])
+  @@index([freelancerId])
+  @@index([status])
+}
+
+model Payment {
+  id                   String        @id @default(uuid())
+  contractId           String
+  amount               Decimal       @db.Decimal(10, 2)
+  paymentMethod        PaymentMethod
+  transactionReference String        @unique
+  paymentStatus        PaymentStatus @default(PENDING)
+  paidAt               DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  contract             Contract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([paymentStatus])
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  rating     Int
+  reviewText String?
+  reviewerId String
+  receiverId String
+  contractId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  reviewer   User     @relation("WrittenReviews", fields: [reviewerId], references: [id], onDelete: Cascade)
+  receiver   User     @relation("ReceivedReviews", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([reviewerId])
+  @@index([receiverId])
+  @@index([contractId])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  type      NotificationType @default(SYSTEM)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
 }
